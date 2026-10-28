@@ -1,0 +1,26 @@
+[
+    {
+        "identificador": "OBJ-Carlos Balbas",
+        "tipo": "Cuerpo-Integrantes",
+        "coordenadas": [
+            10.0,
+            15.0
+        ]
+    },
+    {
+        "identificador": "OBJ-Lucas Parreño",
+        "tipo": "Cuerpo-Integrantes",
+        "coordenadas": [
+            20.0,
+            30.0
+        ]
+    },
+    {
+        "identificador": "OBJ-Victor Llorente",
+        "tipo": "Cuerpo-Integrantes",
+        "coordenadas": [
+            30.0,
+            45.0
+        ]
+    }
+]

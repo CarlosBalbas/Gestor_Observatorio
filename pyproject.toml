@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "observatorio"
+version = "1.0.0"
+description = "Gestor de Observatorio Astronómico - Técnicas de Programación Avanzada"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Carlos Balbás" },
+    { name = "Lucas Parreño" },
+    { name = "Victor Llorente" }
+]
+dependencies = [
+    "regex>=2023.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "black>=24.0.0",
+    "ruff>=0.3.0",
+    "pdoc>=14.0.0"
+]
+
+[project.scripts]
+observatorio = "observatorio.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-v --cov=observatorio --cov-report=term-missing"

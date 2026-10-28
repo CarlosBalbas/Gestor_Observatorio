@@ -1,0 +1,9 @@
+{
+    "nombre_observatorio": "Observatorio Astronómico Nebrija",
+    "ruta_json": "objetos_integrantes.json",
+    "ruta_validacion": "datos_observatorio.json",
+    "ruta_sqlite": "observatorio.db",
+    "archivo_log": "observatorio.log",
+    "nivel_log": "INFO",
+    "factor_capacidad": 3
+}

@@ -1,0 +1,37 @@
+[
+    {
+        "identificador": "OBJ-Carlos Balbas",
+        "tipo": "Cuerpo-Integrantes",
+        "coordenadas": [10.0, 15.0],
+        "fecha_descubrimiento": "2023-05-12"
+    },
+    {
+        "identificador": "OBJ-Lucas Parreño",
+        "tipo": "Cuerpo-Integrantes",
+        "coordenadas": [20.0, 30.0],
+        "fecha_descubrimiento": "2024-08-22"
+    },
+    {
+        "identificador": "OBJ-Victor Llorente",
+        "tipo": "Cuerpo-Integrantes",
+        "coordenadas": [30.0, 45.0],
+        "fecha_descubrimiento": "2025-11-03"
+    },
+    {
+        "identificador": "OBJ-Extra 1",
+        "tipo": "Cometa",
+        "coordenadas": [40.0, 60.0],
+        "fecha_descubrimiento": "2026-01-15"
+    },
+    {
+        "identificador": "OBJ-Error-Formato",
+        "tipo": "Asteroide",
+        "coordenadas": [50.0, 75.0],
+        "fecha_descubrimiento": "2026/02/20"
+    },
+    {
+        "identificador": "OBJ-Error-FaltaCampo",
+        "tipo": "Planeta",
+        "coordenadas": [60.0, 90.0]
+    }
+]

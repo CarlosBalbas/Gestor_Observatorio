@@ -1,0 +1,35 @@
+Metadata-Version: 2.4
+Name: observatorio
+Version: 1.0.0
+Summary: Gestor de Observatorio Astronómico - Técnicas de Programación Avanzada
+Author: Carlos Balbás, Lucas Parreño, Victor Llorente
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: regex>=2023.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=5.0.0; extra == "dev"
+Requires-Dist: black>=24.0.0; extra == "dev"
+Requires-Dist: ruff>=0.3.0; extra == "dev"
+Requires-Dist: pdoc>=14.0.0; extra == "dev"
+
+# Gestor Observatorio Astronómico
+
+Proyecto desarrollado para la asignatura Técnicas de Programación Avanzada.
+
+## Integrantes
+
+- Carlos Balbás
+- Lucas Parreño
+- Victor Llorente
+
+## Versión
+
+v1.0.0
+
+## Instalación
+
+Crear entorno virtual:
+
+```bash
+python -m venv .venv
