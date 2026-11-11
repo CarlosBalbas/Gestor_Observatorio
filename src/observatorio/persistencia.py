@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import regex
@@ -71,7 +72,11 @@ def cargar_repositorio_json(
     try:
         with open(ruta_archivo, "r", encoding="utf-8") as archivo:
             datos_recuperados = json.load(archivo)
+        if not isinstance(datos_recuperados, list):
+            raise PersistenciaError(f"'{ruta_archivo}' debe contener una lista de objetos")
         for item in datos_recuperados:
+            if not isinstance(item, dict):
+                raise PersistenciaError(f"Elemento no válido en '{ruta_archivo}': {item!r}")
             obj_nuevo = ObjetoCeleste.desde_diccionario(item)
             repo_reconstruido.agregar(obj_nuevo)
         if logger:
@@ -140,8 +145,13 @@ def cargar_y_validar_registros_json(
     except (OSError, json.JSONDecodeError) as error:
         raise PersistenciaError(f"No se pudo leer '{ruta_archivo}': {error}") from error
 
+    if not isinstance(datos, list):
+        raise PersistenciaError(f"'{ruta_archivo}' debe contener una lista de registros JSON")
+
     for i, registro in enumerate(datos, 1):
         try:
+            if not isinstance(registro, dict):
+                raise RegistroInvalidoError(f"[Registro {i}] Falla: no es un objeto JSON.")
             obj = validar_registro_diccionario(registro, i)
             repo_validados.agregar(obj)
             if logger:
@@ -156,17 +166,34 @@ def cargar_y_validar_registros_json(
 
 
 class GestorSQLiteObservatorio:
-    """Gestiona la persistencia relacional de objetos celestes mediante SQLite3."""
+    """Gestiona la persistencia relacional de objetos celestes mediante SQLite3.
+
+    Cada operación abre su propia conexión y la cierra al terminar
+    (``contextlib.closing``). El ``with conexion:`` interno delimita la transacción:
+    hace COMMIT si el bloque termina bien y ROLLBACK si se lanza una excepción.
+    Ojo: ``with sqlite3.connect(...)`` por sí solo NO cierra la conexión, solo
+    confirma o deshace la transacción.
+    """
+
+    _SQL_INSERTAR = """
+        INSERT OR REPLACE INTO objetos_celestes
+        (identificador, tipo, ascension_recta, declinacion)
+        VALUES (?, ?, ?, ?)
+    """
 
     def __init__(self, ruta_db: str | Path = "observatorio.db") -> None:
         self.ruta_db = Path(ruta_db)
         self._inicializar_tablas()
 
+    def _conectar(self) -> sqlite3.Connection:
+        """Abre una conexión nueva con la base de datos."""
+        return sqlite3.connect(self.ruta_db)
+
     def _inicializar_tablas(self) -> None:
         """Crea la tabla de objetos celestes si no existe en la base de datos."""
         try:
-            with sqlite3.connect(self.ruta_db) as conn:
-                conn.execute("""
+            with closing(self._conectar()) as conexion, conexion:
+                conexion.execute("""
                     CREATE TABLE IF NOT EXISTS objetos_celestes (
                         identificador TEXT PRIMARY KEY,
                         tipo TEXT NOT NULL,
@@ -174,41 +201,49 @@ class GestorSQLiteObservatorio:
                         declinacion REAL NOT NULL
                     )
                     """)
-                conn.commit()
         except sqlite3.Error as error:
             raise PersistenciaError(f"Error inicializando SQLite: {error}") from error
 
+    @staticmethod
+    def _fila(objeto: ObjetoCeleste) -> tuple[str, str, float, float]:
+        """Convierte un ObjetoCeleste en la tupla de parámetros de la consulta."""
+        ar, dec = objeto.coordenadas
+        return (objeto.identificador, objeto.tipo, ar, dec)
+
     def guardar_objeto(self, objeto: ObjetoCeleste) -> None:
         """Inserta o actualiza un ObjetoCeleste en la base de datos SQLite."""
-        ar, dec = objeto.coordenadas
         try:
-            with sqlite3.connect(self.ruta_db) as conn:
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO objetos_celestes
-                    (identificador, tipo, ascension_recta, declinacion)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (objeto.identificador, objeto.tipo, ar, dec),
-                )
-                conn.commit()
+            with closing(self._conectar()) as conexion, conexion:
+                conexion.execute(self._SQL_INSERTAR, self._fila(objeto))
         except sqlite3.Error as error:
             raise PersistenciaError(f"Error guardando objeto en SQLite: {error}") from error
 
     def guardar_repositorio(self, repositorio: Repositorio[ObjetoCeleste]) -> int:
-        """Guarda todos los elementos de un repositorio dentro de una transacción SQLite."""
-        contador = 0
-        for obj in repositorio:
-            self.guardar_objeto(obj)
-            contador += 1
-        return contador
+        """Guarda todos los objetos de un repositorio en UNA sola transacción.
+
+        Si falla cualquier inserción se hace ROLLBACK y no queda guardado ninguno
+        (todo o nada).
+
+        Returns:
+            Número de objetos guardados.
+
+        Raises:
+            PersistenciaError: Si SQLite devuelve un error; la transacción se deshace.
+        """
+        filas = [self._fila(obj) for obj in repositorio]
+        try:
+            with closing(self._conectar()) as conexion, conexion:
+                conexion.executemany(self._SQL_INSERTAR, filas)
+        except sqlite3.Error as error:
+            raise PersistenciaError(f"Error guardando repositorio en SQLite: {error}") from error
+        return len(filas)
 
     def obtener_todos(self) -> Repositorio[ObjetoCeleste]:
         """Recupera todos los objetos celestes almacenados en la base de datos SQLite."""
         repo: Repositorio[ObjetoCeleste] = Repositorio()
         try:
-            with sqlite3.connect(self.ruta_db) as conn:
-                cursor = conn.execute(
+            with closing(self._conectar()) as conexion:
+                cursor = conexion.execute(
                     "SELECT identificador, tipo, ascension_recta, declinacion "
                     "FROM objetos_celestes ORDER BY rowid ASC"
                 )
