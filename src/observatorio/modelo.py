@@ -27,8 +27,24 @@ class RegistroInvalidoError(Exception):
     """Excepción lanzada cuando un registro de entrada no cumple los criterios de validación."""
 
 
+class ObjetoDuplicadoError(ValueError):
+    """Excepción lanzada al registrar un identificador que ya existe en el catálogo.
+
+    Hereda de ValueError porque es un valor de entrada no válido para el catálogo.
+    """
+
+
 class PersistenciaError(Exception):
     """Excepción lanzada cuando ocurre un fallo de lectura o escritura en almacenamiento."""
+
+
+OBJETOS_PROTEGIDOS: frozenset[str] = frozenset(
+    {"Sol", "Luna", "Sirio", "Júpiter", "Saturno", "Neptuno", "M45", "Pluton"}
+)
+"""Identificadores del catálogo de referencia que no se pueden eliminar."""
+
+FACTOR_CAPACIDAD_POR_DEFECTO = 3
+"""Multiplicador aplicado al número de objetos iniciales para fijar la capacidad máxima."""
 
 
 class ObjetoCeleste:
@@ -43,8 +59,11 @@ class ObjetoCeleste:
             coordenadas: Tupla (ascensión_recta, declinación) en grados.
 
         Raises:
+            TypeError: Si el identificador o el tipo no son cadenas de texto.
             ValueError: Si los textos están vacíos o las coordenadas están fuera de rango.
         """
+        if not isinstance(identificador, str) or not isinstance(tipo, str):
+            raise TypeError("El identificador y el tipo tienen que ser cadenas de texto")
         if not identificador.strip() or not tipo.strip():
             raise ValueError("El identificador y el tipo NO pueden estar vacíos")
         if len(coordenadas) != 2:
@@ -101,6 +120,10 @@ class ObjetoCeleste:
             otro.coordenadas,
         )
 
+    def __hash__(self) -> int:
+        """Hash coherente con __eq__: los atributos comparados son de solo lectura."""
+        return hash((self.identificador, self.tipo, self.coordenadas))
+
 
 class Telescopio(ABC):
     """Clase base abstracta que modela un telescopio del observatorio."""
@@ -126,7 +149,7 @@ class Telescopio(ABC):
         if not isinstance(nuevo_valor, str):
             raise TypeError("El nombre tiene que ser un string")
         if not nuevo_valor.strip():
-            raise TypeError("El nombre del telescopio no puede estar vacío")
+            raise ValueError("El nombre del telescopio no puede estar vacío")
         self.__nombre = nuevo_valor.strip()
 
     @property
@@ -139,7 +162,7 @@ class Telescopio(ABC):
         if type(nuevo_valor) is not int:
             raise TypeError("Las horas de uso tienen que ser un int")
         if nuevo_valor < 0:
-            raise TypeError("Las horas de uso tienen que ser mayor o igual a 0")
+            raise ValueError("Las horas de uso tienen que ser mayor o igual a 0")
         self.__horas_uso = nuevo_valor
 
     @property
@@ -152,7 +175,7 @@ class Telescopio(ABC):
         if type(nuevo_valor) is not int:
             raise TypeError("El diámetro tiene que ser un int")
         if nuevo_valor <= 0:
-            raise TypeError("El diámetro tiene que ser mayor a 0")
+            raise ValueError("El diámetro tiene que ser mayor a 0")
         self.__diametro_mm = nuevo_valor
 
 
@@ -199,18 +222,47 @@ class SesionObservacion:
         )
 
 
+def _comprobar_identificadores_unicos(objetos: list[ObjetoCeleste]) -> None:
+    """Lanza ObjetoDuplicadoError si algún identificador aparece más de una vez."""
+    vistos: set[str] = set()
+    for obj in objetos:
+        if obj.identificador in vistos:
+            raise ObjetoDuplicadoError(f"Identificador repetido: '{obj.identificador}'.")
+        vistos.add(obj.identificador)
+
+
 class CatalogoObservatorio:
     """Agrupa una colección de objetos celestes bajo una capacidad máxima controlada."""
 
-    def __init__(self, nombre: str, objetos_iniciales: list[ObjetoCeleste] | None = None) -> None:
+    def __init__(
+        self,
+        nombre: str,
+        objetos_iniciales: list[ObjetoCeleste] | None = None,
+        factor_capacidad: int = FACTOR_CAPACIDAD_POR_DEFECTO,
+    ) -> None:
+        """Crea el catálogo y fija su capacidad máxima.
+
+        Args:
+            nombre: Nombre del catálogo.
+            objetos_iniciales: Objetos con los que arranca (se copia la lista).
+            factor_capacidad: La capacidad máxima es nº de objetos iniciales x factor
+                (con 8 como base si el catálogo empieza vacío).
+
+        Raises:
+            ValueError: Si el nombre está vacío o el factor no es un entero positivo.
+            ObjetoDuplicadoError: Si los objetos iniciales repiten identificador.
+        """
         if not nombre.strip():
             raise ValueError("El nombre del catálogo no puede estar vacío")
+        if type(factor_capacidad) is not int or factor_capacidad < 1:
+            raise ValueError("El factor de capacidad tiene que ser un entero positivo")
         self.nombre = nombre.strip()
         self.objetos: list[ObjetoCeleste] = (
             [] if objetos_iniciales is None else list(objetos_iniciales)
         )
+        _comprobar_identificadores_unicos(self.objetos)
         base = len(self.objetos) if len(self.objetos) > 0 else 8
-        self.__capacidad_maxima = base * 3
+        self.__capacidad_maxima = base * factor_capacidad
 
     @property
     def capacidad_maxima(self) -> int:
@@ -218,14 +270,47 @@ class CatalogoObservatorio:
         return self.__capacidad_maxima
 
     def anadir(self, objeto: ObjetoCeleste) -> None:
-        """Añade un objeto celeste verificando previamente el límite de capacidad."""
+        """Añade un objeto celeste verificando capacidad e identificador único.
+
+        Raises:
+            CapacidadMaximaError: Si el catálogo está lleno.
+            ObjetoDuplicadoError: Si ya existe un objeto con el mismo identificador.
+        """
         if len(self.objetos) >= self.capacidad_maxima:
             raise CapacidadMaximaError(
                 f"No se puede registrar '{objeto.identificador}'. Capacidad máxima alcanzada.",
                 len(self.objetos),
                 self.capacidad_maxima,
             )
+        if self.buscar_por_id(objeto.identificador) is not None:
+            raise ObjetoDuplicadoError(
+                f"Ya existe un objeto con identificador '{objeto.identificador}'."
+            )
         self.objetos.append(objeto)
+
+    def reemplazar_objetos(self, nuevos: list[ObjetoCeleste]) -> None:
+        """Sustituye el contenido del catálogo pasando cada objeto por anadir().
+
+        Comprueba la capacidad antes de tocar nada, de modo que si los datos no caben
+        el catálogo queda intacto. Al usar anadir(), las subclases (por ejemplo
+        CatalogoObservable) siguen notificando cada alta.
+
+        Raises:
+            CapacidadMaximaError: Si los nuevos objetos superan la capacidad máxima.
+            ObjetoDuplicadoError: Si hay identificadores repetidos en los nuevos objetos.
+        """
+        nuevos = list(nuevos)
+        _comprobar_identificadores_unicos(nuevos)
+        if len(nuevos) > self.capacidad_maxima:
+            raise CapacidadMaximaError(
+                f"No se pueden cargar {len(nuevos)} objetos. Capacidad máxima: "
+                f"{self.capacidad_maxima}.",
+                len(nuevos),
+                self.capacidad_maxima,
+            )
+        self.objetos = []
+        for objeto in nuevos:
+            self.anadir(objeto)
 
     def buscar_por_id(self, identificador: str) -> ObjetoCeleste | None:
         """Busca un objeto celeste por su identificador exacto."""
@@ -248,24 +333,16 @@ class CatalogoObservatorio:
             identificador: Nombre o código único del objeto a eliminar.
 
         Returns:
-            True si se ha eliminado con éxito, False en caso contrario.
+            True si se ha eliminado con éxito, False si no existía.
+
+        Raises:
+            ValueError: Si el objeto pertenece a OBJETOS_PROTEGIDOS.
         """
         ident_limpio = identificador.strip()
-
-        # Opcional: Proteger los objetos celestes base del observatorio
-        OBJETOS_PROTEGIDOS = {
-            "Sol",
-            "Luna",
-            "Sirio",
-            "Júpiter",
-            "Saturno",
-            "Neptuno",
-            "M45",
-            "Pluton",
-        }
         if ident_limpio in OBJETOS_PROTEGIDOS:
             raise ValueError(
-                f"No se puede eliminar '{ident_limpio}' por ser un objeto celeste de referencia protegido."
+                f"No se puede eliminar '{ident_limpio}' por ser un objeto celeste "
+                "de referencia protegido."
             )
 
         for obj in self.objetos:
@@ -275,7 +352,9 @@ class CatalogoObservatorio:
         return False
 
 
-def crear_catalogo_ejemplo() -> CatalogoObservatorio:
+def crear_catalogo_ejemplo(
+    factor_capacidad: int = FACTOR_CAPACIDAD_POR_DEFECTO,
+) -> CatalogoObservatorio:
     """Construye el catálogo de ejemplo de 8 objetos astronómicos."""
     elementos = [
         ObjetoCeleste("Sol", "Estrella", (10.68, 41.27)),
@@ -287,7 +366,7 @@ def crear_catalogo_ejemplo() -> CatalogoObservatorio:
         ObjetoCeleste("M45", "Cúmulo", (56.75, 24.12)),
         ObjetoCeleste("Pluton", "Planeta", (88.79, 7.41)),
     ]
-    return CatalogoObservatorio("Test Catalogo", elementos)
+    return CatalogoObservatorio("Test Catalogo", elementos, factor_capacidad)
 
 
 def mostrar_resumen(elemento: Resumible) -> str:

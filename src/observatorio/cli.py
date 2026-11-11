@@ -48,8 +48,10 @@ def ejecutar_demo(ruta_config: str = "config.example.json") -> None:
 
     # 2. Catálogo Observable (Patrón Observer) y manejo de CapacidadMaximaError
     logger.info("--- 2. Catálogo Observable (Patrón Observer) y Sesiones ---")
-    catalogo_base = crear_catalogo_ejemplo()
-    catalogo = CatalogoObservable(catalogo_base.nombre, catalogo_base.objetos)
+    catalogo_base = crear_catalogo_ejemplo(config.factor_capacidad)
+    catalogo = CatalogoObservable(
+        catalogo_base.nombre, catalogo_base.objetos, config.factor_capacidad
+    )
     observador = AuditoriaLoggerObservador(logger)
     catalogo.suscribir(observador)
 
@@ -156,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.gui:
         from observatorio.interfaz import iniciar_interfaz
 
-        iniciar_interfaz()
+        iniciar_interfaz(cargar_configuracion(args.config))
         return 0
 
     if args.demo:

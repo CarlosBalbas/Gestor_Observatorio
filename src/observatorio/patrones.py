@@ -4,6 +4,7 @@ import logging
 from typing import Protocol
 
 from observatorio.modelo import (
+    FACTOR_CAPACIDAD_POR_DEFECTO,
     CapacidadMaximaError,
     CatalogoObservatorio,
     ObjetoCeleste,
@@ -90,8 +91,13 @@ class AuditoriaLoggerObservador:
 class CatalogoObservable(CatalogoObservatorio):
     """Extensión de CatalogoObservatorio que implementa el sujeto del patrón Observer."""
 
-    def __init__(self, nombre: str, objetos_iniciales: list[ObjetoCeleste] | None = None) -> None:
-        super().__init__(nombre, objetos_iniciales)
+    def __init__(
+        self,
+        nombre: str,
+        objetos_iniciales: list[ObjetoCeleste] | None = None,
+        factor_capacidad: int = FACTOR_CAPACIDAD_POR_DEFECTO,
+    ) -> None:
+        super().__init__(nombre, objetos_iniciales, factor_capacidad)
         self._observadores: list[ObservadorCatalogo] = []
 
     def suscribir(self, observador: ObservadorCatalogo) -> None:
