@@ -81,15 +81,15 @@ def test_subclases_telescopio_y_encapsulamiento() -> None:
     assert refractor.horas_uso == 15
     assert refractor.diametro_mm == 150
 
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         refractor.nombre = "   "
     with pytest.raises(TypeError):
         refractor.nombre = 123  # type: ignore[assignment]
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         refractor.horas_uso = -5
     with pytest.raises(TypeError):
         refractor.horas_uso = 3.5  # type: ignore[assignment]
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         refractor.diametro_mm = 0
     with pytest.raises(TypeError):
         refractor.diametro_mm = "grande"  # type: ignore[assignment]
