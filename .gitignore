@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Entornos virtuales
+.venv/
+venv/
+
+# Pruebas y cobertura
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+
+# Ficheros que genera la aplicación al ejecutarse
+*.log
+*.db
+objetos_interfaz.json
+src/observatorio/*.json
+
+# IDE
+.idea/
+.vscode/
