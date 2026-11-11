@@ -1,11 +1,24 @@
-"""Interfaz gráfica de usuario (GUI) basada en Tkinter para el Gestor del Observatorio."""
+"""Interfaz gráfica de usuario (GUI) basada en Tkinter para el Gestor del Observatorio.
+
+Concurrencia: las operaciones de disco (guardar/cargar JSON y exportar a SQLite) se
+ejecutan en un hilo de trabajo (ThreadPoolExecutor con un único hilo) para que la
+ventana no se congele. Tkinter NO es seguro entre hilos, así que el hilo de trabajo
+nunca toca widgets ni el catálogo: recibe una copia de los datos, devuelve un resultado
+y el hilo principal lo recoge sondeando el Future con ``after()``.
+"""
 
 import tkinter as tk
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from tkinter import messagebox, ttk
+from typing import Any
 
+from observatorio import __version__
+from observatorio.config import ConfiguracionObservatorio
 from observatorio.logger import configurar_logger
 from observatorio.modelo import (
+    OBJETOS_PROTEGIDOS,
     CapacidadMaximaError,
     ObjetoCeleste,
     PersistenciaError,
@@ -18,31 +31,65 @@ from observatorio.patrones import (
     FabricaTelescopios,
 )
 from observatorio.persistencia import (
+    GestorSQLiteObservatorio,
     cargar_repositorio_json,
     guardar_repositorio_json,
 )
 
 
+def _repositorio_desde(objetos: list[ObjetoCeleste]) -> Repositorio[ObjetoCeleste]:
+    """Construye un Repositorio a partir de una lista de objetos."""
+    repo: Repositorio[ObjetoCeleste] = Repositorio()
+    for obj in objetos:
+        repo.agregar(obj)
+    return repo
+
+
 class VentanaObservatorio(tk.Tk):
     """Ventana principal de la interfaz gráfica del Observatorio Astronómico."""
 
-    def __init__(self, ruta_json: str | Path = "objetos_interfaz.json") -> None:
+    INTERVALO_SONDEO_MS = 50
+    """Cada cuánto comprueba el hilo principal si ha terminado la tarea en segundo plano."""
+
+    def __init__(
+        self,
+        ruta_json: str | Path = "objetos_interfaz.json",
+        config: ConfiguracionObservatorio | None = None,
+    ) -> None:
+        """Crea la ventana, el catálogo observable y el hilo de trabajo para la E/S.
+
+        Args:
+            ruta_json: Fichero JSON que usan los botones Guardar/Cargar JSON.
+            config: Configuración de la aplicación (capacidad, ruta SQLite, log).
+        """
         super().__init__()
-        self.title("Gestor de Observatorio Astronómico (v1.0.0)")
-        self.geometry("850x600")
-        self.minsize(700, 500)
+        self.config_app = config if config is not None else ConfiguracionObservatorio()
+        self.title(f"Gestor de Observatorio Astronómico (v{__version__})")
+        self.geometry("1150x620")
+        self.minsize(1100, 520)
 
         self.ruta_json = Path(ruta_json)
-        self.logger = configurar_logger("observatorio_gui", "observatorio_gui.log")
+        self.ruta_sqlite = Path(self.config_app.ruta_sqlite)
+        self.logger = configurar_logger(
+            "observatorio_gui", "observatorio_gui.log", self.config_app.nivel_log
+        )
+
+        # Concurrencia: un único hilo de trabajo serializa las operaciones de disco.
+        self._ejecutor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="observatorio-io")
+        self._tarea_actual: Future[Any] | None = None
+        self._id_sondeo: str | None = None
+        self._botones_es: list[ttk.Button] = []
 
         # Inicializar dominio y patrones
-        catalogo_base = crear_catalogo_ejemplo()
-        self.catalogo = CatalogoObservable(catalogo_base.nombre, catalogo_base.objetos)
+        factor = self.config_app.factor_capacidad
+        catalogo_base = crear_catalogo_ejemplo(factor)
+        self.catalogo = CatalogoObservable(catalogo_base.nombre, catalogo_base.objetos, factor)
         self.observador = AuditoriaLoggerObservador(self.logger)
         self.catalogo.suscribir(self.observador)
 
         self._construir_interfaz()
         self._actualizar_tabla()
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
 
     def _construir_interfaz(self) -> None:
         """Construye los componentes visuales de la ventana."""
@@ -126,26 +173,89 @@ class VentanaObservatorio(tk.Tk):
         frame_botones = ttk.Frame(frame_inferior)
         frame_botones.grid(row=1, column=0, columnspan=9, pady=10)
 
-        btn_factory = ttk.Button(
-            frame_botones, text="Crear Telescopio (Factory)", command=self._on_crear_telescopio
-        )
-        btn_factory.pack(side=tk.LEFT, padx=5)
+        acciones: list[tuple[str, Callable[[], None], bool]] = [
+            ("Crear Telescopio (Factory)", self._on_crear_telescopio, False),
+            ("Guardar JSON", self._on_guardar_json, True),
+            ("Cargar JSON", self._on_cargar_json, True),
+            ("Exportar SQLite", self._on_exportar_sqlite, True),
+            ("Refrescar Tabla", self._actualizar_tabla, False),
+            ("Eliminar Seleccionado", self._on_eliminar_objeto, False),
+        ]
+        for texto, comando, es_entrada_salida in acciones:
+            boton = ttk.Button(frame_botones, text=texto, command=comando)
+            boton.pack(side=tk.LEFT, padx=5)
+            if es_entrada_salida:
+                self._botones_es.append(boton)
 
-        btn_guardar = ttk.Button(frame_botones, text="Guardar JSON", command=self._on_guardar_json)
-        btn_guardar.pack(side=tk.LEFT, padx=5)
+    # ------------------------------------------------------------------ concurrencia
 
-        btn_cargar = ttk.Button(frame_botones, text="Cargar JSON", command=self._on_cargar_json)
-        btn_cargar.pack(side=tk.LEFT, padx=5)
+    @property
+    def ocupada(self) -> bool:
+        """Indica si hay una operación de disco en curso en el hilo de trabajo."""
+        return self._tarea_actual is not None
 
-        btn_limpiar = ttk.Button(
-            frame_botones, text="Refrescar Tabla", command=self._actualizar_tabla
-        )
-        btn_limpiar.pack(side=tk.LEFT, padx=5)
+    def _ejecutar_en_segundo_plano(
+        self,
+        descripcion: str,
+        tarea: Callable[[], Any],
+        al_terminar: Callable[[Any], None],
+    ) -> None:
+        """Lanza ``tarea`` en el hilo de trabajo y llama a ``al_terminar`` en el principal.
 
-        btn_eliminar = ttk.Button(
-            frame_botones, text="Eliminar Seleccionado", command=self._on_eliminar_objeto
-        )
-        btn_eliminar.pack(side=tk.LEFT, padx=5)
+        Args:
+            descripcion: Texto que se muestra en la barra de estado mientras dura.
+            tarea: Función sin argumentos que se ejecuta fuera del hilo de Tkinter.
+                No debe tocar widgets ni el catálogo.
+            al_terminar: Recibe el resultado de ``tarea``; se ejecuta en el hilo principal.
+        """
+        if self.ocupada:
+            messagebox.showwarning("Operación en curso", "Espera a que termine la anterior.")
+            return
+        self._fijar_ocupada(True, descripcion)
+        self._tarea_actual = self._ejecutor.submit(tarea)
+        self._id_sondeo = self.after(self.INTERVALO_SONDEO_MS, self._comprobar_tarea, al_terminar)
+
+    def _comprobar_tarea(self, al_terminar: Callable[[Any], None]) -> None:
+        """Sondea el Future desde el hilo principal y entrega el resultado al terminar."""
+        tarea = self._tarea_actual
+        if tarea is None:
+            return
+        if not tarea.done():
+            self._id_sondeo = self.after(
+                self.INTERVALO_SONDEO_MS, self._comprobar_tarea, al_terminar
+            )
+            return
+        self._tarea_actual = None
+        self._id_sondeo = None
+        self._fijar_ocupada(False)
+        try:
+            resultado = tarea.result()
+        except PersistenciaError as error:
+            messagebox.showerror("Error de Persistencia", str(error))
+            return
+        al_terminar(resultado)
+
+    def _fijar_ocupada(self, ocupada: bool, descripcion: str = "") -> None:
+        """Activa o desactiva los botones de E/S y actualiza la barra de estado."""
+        estado = ["disabled"] if ocupada else ["!disabled"]
+        for boton in self._botones_es:
+            boton.state(estado)
+        if ocupada:
+            self.lbl_estado.config(text=f"⏳ {descripcion}...")
+            self.config(cursor="watch")
+        else:
+            self.config(cursor="")
+            self._actualizar_tabla()
+
+    def destroy(self) -> None:
+        """Cancela el sondeo pendiente y espera al hilo de trabajo antes de cerrar."""
+        if self._id_sondeo is not None:
+            self.after_cancel(self._id_sondeo)
+            self._id_sondeo = None
+        self._ejecutor.shutdown(wait=True, cancel_futures=True)
+        super().destroy()
+
+    # ------------------------------------------------------------------ tabla
 
     def _actualizar_tabla(self) -> None:
         """Actualiza el contenido visual de la tabla y la etiqueta de capacidad."""
@@ -154,13 +264,19 @@ class VentanaObservatorio(tk.Tk):
 
         for obj in self.catalogo.objetos:
             ar, dec = obj.coordenadas
+            # El identificador es único en el catálogo: se usa como iid de la fila.
             self.tabla.insert(
-                "", tk.END, values=(obj.identificador, obj.tipo, f"{ar:.2f}", f"{dec:.2f}")
+                "",
+                tk.END,
+                iid=obj.identificador,
+                values=(obj.identificador, obj.tipo, f"{ar:.2f}", f"{dec:.2f}"),
             )
 
         self.lbl_estado.config(
             text=f"Catálogo: {len(self.catalogo.objetos)} / {self.catalogo.capacidad_maxima} objetos"
         )
+
+    # ------------------------------------------------------------------ acciones
 
     def _on_anadir_objeto(self) -> None:
         """Controlador para añadir un objeto recogiendo los datos del formulario."""
@@ -176,26 +292,29 @@ class VentanaObservatorio(tk.Tk):
             return
 
         try:
-            ar = float(ar_str)
-            dec = float(dec_str)
+            ar = float(ar_str.replace(",", "."))
+            dec = float(dec_str.replace(",", "."))
             nuevo_obj = ObjetoCeleste(ident, tipo_astro, (ar, dec))
             self.catalogo.anadir(nuevo_obj)
-            self._actualizar_tabla()
-            messagebox.showinfo("Éxito", f"Objeto '{ident}' añadido correctamente al catálogo.")
-            self.txt_id.delete(0, tk.END)
-            self.txt_tipo.delete(0, tk.END)
-            self.txt_ar.delete(0, tk.END)
-            self.txt_dec.delete(0, tk.END)
-        except ValueError as e:
-            messagebox.showerror("Error de Formato / Rango", str(e))
         except CapacidadMaximaError as e:
             messagebox.showwarning("Capacidad Máxima", str(e))
+            return
+        except ValueError as e:
+            # Incluye ObjetoDuplicadoError y los float() mal escritos.
+            messagebox.showerror("Error de Formato / Rango", str(e))
+            return
+
+        self._actualizar_tabla()
+        messagebox.showinfo("Éxito", f"Objeto '{ident}' añadido correctamente al catálogo.")
+        for campo in (self.txt_id, self.txt_tipo, self.txt_ar, self.txt_dec):
+            campo.delete(0, tk.END)
 
     def _on_crear_telescopio(self) -> None:
         """Demuestra el uso del patrón Factory Method mediante un diálogo gráfico."""
         tipo_optico = messagebox.askquestion(
             "Patrón Factory",
-            "¿Qué tipo de telescopio deseas crear?\n\n- Sí: Refractor (Lentes)\n- No: Reflector (Espejos)",
+            "¿Qué tipo de telescopio deseas crear?\n\n"
+            "- Sí: Refractor (Lentes)\n- No: Reflector (Espejos)",
             icon=messagebox.QUESTION,
         )
         tipo_str = "refractor" if tipo_optico == "yes" else "reflector"
@@ -206,33 +325,62 @@ class VentanaObservatorio(tk.Tk):
         )
 
     def _on_guardar_json(self) -> None:
-        """Guarda el catálogo actual en fichero JSON usando las funciones de persistencia."""
-        try:
-            repo: Repositorio[ObjetoCeleste] = Repositorio()
-            for obj in self.catalogo.objetos:
-                repo.agregar(obj)
-            guardar_repositorio_json(repo, self.ruta_json, self.logger)
-            messagebox.showinfo(
-                "Persistencia", f"Catálogo guardado con éxito en '{self.ruta_json}'."
-            )
-        except PersistenciaError as e:
-            messagebox.showerror("Error de Persistencia", str(e))
+        """Guarda el catálogo en JSON en segundo plano."""
+        # Copia hecha en el hilo principal: el hilo de trabajo no lee self.catalogo.
+        # Basta una copia superficial porque ObjetoCeleste es inmutable.
+        instantanea = list(self.catalogo.objetos)
+        ruta = self.ruta_json
+
+        def tarea() -> int:
+            guardar_repositorio_json(_repositorio_desde(instantanea), ruta, self.logger)
+            return len(instantanea)
+
+        def al_terminar(total: int) -> None:
+            messagebox.showinfo("Persistencia", f"{total} objetos guardados en '{ruta}'.")
+
+        self._ejecutar_en_segundo_plano("Guardando JSON", tarea, al_terminar)
 
     def _on_cargar_json(self) -> None:
-        """Carga y reemplaza el catálogo desde un fichero JSON."""
-        if not self.ruta_json.exists():
-            messagebox.showwarning("Aviso", f"No existe el archivo '{self.ruta_json}' para cargar.")
+        """Lee el JSON en segundo plano y aplica el resultado al catálogo en el principal."""
+        ruta = self.ruta_json
+        if not ruta.exists():
+            messagebox.showwarning("Aviso", f"No existe el archivo '{ruta}' para cargar.")
             return
-        try:
-            repo = cargar_repositorio_json(self.ruta_json, self.logger)
-            self.catalogo.objetos = repo.obtener_todos()
+
+        def tarea() -> list[ObjetoCeleste]:
+            return cargar_repositorio_json(ruta, self.logger).obtener_todos()
+
+        def al_terminar(objetos: list[ObjetoCeleste]) -> None:
+            # Se pasa por el dominio: respeta capacidad y unicidad y notifica al Observer.
+            try:
+                self.catalogo.reemplazar_objetos(objetos)
+            except CapacidadMaximaError as e:
+                messagebox.showwarning("Capacidad Máxima", str(e))
+                return
+            except ValueError as e:
+                messagebox.showerror("Error de Carga", str(e))
+                return
             self._actualizar_tabla()
-            messagebox.showinfo(
-                "Persistencia",
-                f"Cargados {len(self.catalogo.objetos)} objetos desde '{self.ruta_json}'.",
+            messagebox.showinfo("Persistencia", f"Cargados {len(objetos)} objetos desde '{ruta}'.")
+
+        self._ejecutar_en_segundo_plano("Cargando JSON", tarea, al_terminar)
+
+    def _on_exportar_sqlite(self) -> None:
+        """Exporta el catálogo a SQLite en segundo plano (una sola transacción)."""
+        instantanea = list(self.catalogo.objetos)
+        ruta = self.ruta_sqlite
+
+        def tarea() -> int:
+            # La conexión se crea, usa y cierra dentro del hilo de trabajo.
+            return GestorSQLiteObservatorio(ruta).guardar_repositorio(
+                _repositorio_desde(instantanea)
             )
-        except PersistenciaError as e:
-            messagebox.showerror("Error de Carga", str(e))
+
+        def al_terminar(total: int) -> None:
+            self.logger.info("GUI: %d objetos exportados a SQLite '%s'.", total, ruta)
+            messagebox.showinfo("SQLite", f"{total} objetos exportados a '{ruta}'.")
+
+        self._ejecutar_en_segundo_plano("Exportando a SQLite", tarea, al_terminar)
 
     def _on_eliminar_objeto(self) -> None:
         """Elimina el objeto celeste seleccionado controlando los elementos protegidos."""
@@ -243,48 +391,43 @@ class VentanaObservatorio(tk.Tk):
             )
             return
 
-        item = self.tabla.item(seleccion)
-        valores = item.get("values")
-        if not valores:
-            return
+        # El iid es el identificador como str (los valores de la fila pueden llegar
+        # convertidos a int por Tcl si el identificador parece un número).
+        identificador_a_borrar = str(seleccion[0])
 
-        identificador_a_borrar = valores[0]
-
-        # Lista de objetos protegidos por defecto del catálogo de ejemplo
-        PROTEGIDOS = {"Sol", "Luna", "Sirio", "Júpiter", "Saturno", "Neptuno", "M45", "Pluton"}
-
-        if identificador_a_borrar in PROTEGIDOS:
+        if identificador_a_borrar in OBJETOS_PROTEGIDOS:
             messagebox.showerror(
                 "Acción no permitida",
-                f"El objeto '{identificador_a_borrar}' forma parte de los cuerpos celestes base del observatorio y NO se puede eliminar.",
+                f"El objeto '{identificador_a_borrar}' forma parte de los cuerpos celestes "
+                "base del observatorio y NO se puede eliminar.",
             )
             return
 
         confirmar = messagebox.askyesno(
             "Confirmar eliminación",
-            f"¿Estás seguro de que deseas eliminar el objeto personalizado '{identificador_a_borrar}'?",
+            f"¿Estás seguro de que deseas eliminar el objeto '{identificador_a_borrar}'?",
         )
         if not confirmar:
             return
 
-        # Intentamos borrar usando el método protegido del catálogo
         try:
             exito = self.catalogo.eliminar(identificador_a_borrar)
-            if exito:
-                self._actualizar_tabla()
-                self.logger.info(
-                    "Objeto '%s' eliminado desde la interfaz gráfica.", identificador_a_borrar
-                )
-                messagebox.showinfo(
-                    "Éxito", f"Objeto '{identificador_a_borrar}' eliminado correctamente."
-                )
         except ValueError as e:
             messagebox.showerror("Error de Dominio", str(e))
+            return
+        if exito:
+            self._actualizar_tabla()
+            self.logger.info(
+                "Objeto '%s' eliminado desde la interfaz gráfica.", identificador_a_borrar
+            )
+            messagebox.showinfo(
+                "Éxito", f"Objeto '{identificador_a_borrar}' eliminado correctamente."
+            )
 
 
-def iniciar_interfaz() -> None:
+def iniciar_interfaz(config: ConfiguracionObservatorio | None = None) -> None:
     """Función de lanzamiento de la GUI."""
-    app = VentanaObservatorio()
+    app = VentanaObservatorio(config=config)
     app.mainloop()
 
 
