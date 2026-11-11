@@ -32,3 +32,7 @@
 2026-10-28 11:07:45 | INFO     | observatorio_gui | Persistencia JSON exitosa: 9 objetos guardados en 'objetos_interfaz.json'.
 2026-10-28 11:08:11 | INFO     | observatorio_gui | Carga JSON exitosa: 9 objetos reconstruidos desde 'objetos_interfaz.json'.
 2026-10-28 12:26:11 | INFO     | observatorio_gui | [OBSERVER] Añadido 'TierrA' (Planeta) al catálogo 'Test Catalogo' (9/24)
+2026-11-10 11:56:47 | INFO     | observatorio_gui | Carga JSON exitosa: 9 objetos reconstruidos desde 'objetos_interfaz.json'.
+2026-11-10 11:56:53 | INFO     | observatorio_gui | Objeto 'Tierra' eliminado desde la interfaz gráfica.
+2026-11-10 11:56:54 | INFO     | observatorio_gui | Persistencia JSON exitosa: 8 objetos guardados en 'objetos_interfaz.json'.
+2026-11-10 11:56:58 | INFO     | observatorio_gui | Carga JSON exitosa: 8 objetos reconstruidos desde 'objetos_interfaz.json'.

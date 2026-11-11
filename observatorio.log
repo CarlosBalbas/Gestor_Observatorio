@@ -493,3 +493,48 @@
 2026-10-28 11:37:06 | INFO     | observatorio | =================================================================
 2026-10-28 11:37:06 | INFO     | observatorio | DEMO FINALIZADA CON ÉXITO. Revisa el archivo 'observatorio.log'.
 2026-10-28 11:37:06 | INFO     | observatorio | =================================================================
+2026-11-10 11:52:19 | INFO     | observatorio | =================================================================
+2026-11-10 11:52:19 | INFO     | observatorio | INICIANDO DEMO: Observatorio Astronómico Nebrija (v1.0.0)
+2026-11-10 11:52:19 | INFO     | observatorio | Integrantes: Carlos Balbas, Lucas Parreño, Victor Llorente
+2026-11-10 11:52:19 | INFO     | observatorio | =================================================================
+2026-11-10 11:52:19 | INFO     | observatorio | --- 1. Creación de Telescopios mediante Patrón Factory ---
+2026-11-10 11:52:19 | INFO     | observatorio | Equipo activo -> Refractor Norte (Refractor de lentes), diámetro: 120 mm
+2026-11-10 11:52:19 | INFO     | observatorio | Equipo activo -> Reflector Sur (Reflector de espejos), diámetro: 250 mm
+2026-11-10 11:52:19 | INFO     | observatorio | --- 2. Catálogo Observable (Patrón Observer) y Sesiones ---
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'M31-Andromeda' (Galaxia) al catálogo 'Test Catalogo' (9/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-9' (Estrella) al catálogo 'Test Catalogo' (10/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-10' (Estrella) al catálogo 'Test Catalogo' (11/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-11' (Estrella) al catálogo 'Test Catalogo' (12/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-12' (Estrella) al catálogo 'Test Catalogo' (13/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-13' (Estrella) al catálogo 'Test Catalogo' (14/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-14' (Estrella) al catálogo 'Test Catalogo' (15/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-15' (Estrella) al catálogo 'Test Catalogo' (16/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-16' (Estrella) al catálogo 'Test Catalogo' (17/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-17' (Estrella) al catálogo 'Test Catalogo' (18/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-18' (Estrella) al catálogo 'Test Catalogo' (19/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-19' (Estrella) al catálogo 'Test Catalogo' (20/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-20' (Estrella) al catálogo 'Test Catalogo' (21/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-21' (Estrella) al catálogo 'Test Catalogo' (22/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-22' (Estrella) al catálogo 'Test Catalogo' (23/24)
+2026-11-10 11:52:19 | INFO     | observatorio | [OBSERVER] Añadido 'Estrella-23' (Estrella) al catálogo 'Test Catalogo' (24/24)
+2026-11-10 11:52:19 | WARNING  | observatorio | [OBSERVER] Alerta de capacidad en 'Test Catalogo': No se puede registrar 'Objeto-Exceso'. Capacidad máxima alcanzada. (24/24)
+2026-11-10 11:52:19 | ERROR    | observatorio | Excepción controlada capturada con éxito: No se puede registrar 'Objeto-Exceso'. Capacidad máxima alcanzada.
+2026-11-10 11:52:19 | INFO     | observatorio | --- 3. Persistencia en JSON y comprobación == vs is ---
+2026-11-10 11:52:19 | INFO     | observatorio | Persistencia JSON exitosa: 3 objetos guardados en 'objetos_integrantes.json'.
+2026-11-10 11:52:19 | INFO     | observatorio | Carga JSON exitosa: 3 objetos reconstruidos desde 'objetos_integrantes.json'.
+2026-11-10 11:52:19 | INFO     | observatorio | Verificado 'OBJ-Carlos Balbas': orig == rec (True) | orig is rec (False)
+2026-11-10 11:52:19 | INFO     | observatorio | Verificado 'OBJ-Lucas Parreño': orig == rec (True) | orig is rec (False)
+2026-11-10 11:52:19 | INFO     | observatorio | Verificado 'OBJ-Victor Llorente': orig == rec (True) | orig is rec (False)
+2026-11-10 11:52:19 | INFO     | observatorio | --- 4. Validación de Registros con Regex (re y regex) ---
+2026-11-10 11:52:19 | INFO     | observatorio | Registro validado con éxito: OBJ-Carlos Balbas
+2026-11-10 11:52:19 | INFO     | observatorio | Registro validado con éxito: OBJ-Lucas Parreño
+2026-11-10 11:52:19 | INFO     | observatorio | Registro validado con éxito: OBJ-Victor Llorente
+2026-11-10 11:52:19 | INFO     | observatorio | Registro validado con éxito: OBJ-Extra 1
+2026-11-10 11:52:19 | WARNING  | observatorio | Registro rechazado en validación: [OBJ-Error-Formato] Falla: Formato de fecha '2026/02/20' no es válido (Debe ser YYYY-MM-DD).
+2026-11-10 11:52:19 | WARNING  | observatorio | Registro rechazado en validación: [OBJ-Error-FaltaCampo] Falla: Falta el campo obligatorio 'fecha_descubrimiento'.
+2026-11-10 11:52:19 | INFO     | observatorio | Resumen validación: 4 aceptados, 2 rechazados.
+2026-11-10 11:52:19 | INFO     | observatorio | --- 5. Persistencia Relacional en SQLite ---
+2026-11-10 11:52:19 | INFO     | observatorio | SQLite 'observatorio.db': 3 objetos insertados y 3 recuperados correctamente.
+2026-11-10 11:52:19 | INFO     | observatorio | =================================================================
+2026-11-10 11:52:19 | INFO     | observatorio | DEMO FINALIZADA CON ÉXITO. Revisa el archivo 'observatorio.log'.
+2026-11-10 11:52:19 | INFO     | observatorio | =================================================================

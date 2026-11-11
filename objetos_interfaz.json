@@ -62,13 +62,5 @@
             88.79,
             7.41
         ]
-    },
-    {
-        "identificador": "Tierra",
-        "tipo": "Planeta",
-        "coordenadas": [
-            0.0,
-            0.0
-        ]
     }
 ]
