@@ -15,6 +15,7 @@ src/observatorio.egg-info/dependency_links.txt
 src/observatorio.egg-info/entry_points.txt
 src/observatorio.egg-info/requires.txt
 src/observatorio.egg-info/top_level.txt
+tests/test_dominio_persistencia.py
 tests/test_integracion.py
 tests/test_interfaz.py
 tests/test_modelo_unitario.py
